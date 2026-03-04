@@ -1,40 +1,50 @@
-NVIDIA="$(lspci | grep -i 'nvidia')"
+#!/bin/bash
+set -e
 
-if [ -n "$NVIDIA" ]; then
-  # Check which kernel is installed and set appropriate headers package
-  KERNEL_HEADERS="$(pacman -Qqs '^linux(-zen|-lts|-hardened)?$' | head -1)-headers"
+# 1. Get GPU ID
+GPU_ID=$(lspci -nn -d 10de: | grep -E "VGA|3D" | head -n1 | grep -oP '(?<=\[10de:)[0-9a-fA-F]{4}(?=\])')
 
-  if echo "$NVIDIA" | grep -qE "RTX [2-9][0-9]|GTX 16"; then
-    # Turing (16xx, 20xx), Ampere (30xx), Ada (40xx), and newer recommend the open-source kernel modules
-    PACKAGES=(nvidia-open-dkms nvidia-utils lib32-nvidia-utils libva-nvidia-driver)
-  elif echo "$NVIDIA" | grep -qE "GTX 9|GTX 10|Quadro P|MX1|MX2|MX3"; then
-    # Pascal (10xx, Quadro Pxxx, MX150, MX2xx, and MX3xx) and Maxwell (9xx, MX110, and MX130) use legacy branch that can only be installed from AUR
-    PACKAGES=(nvidia-580xx-dkms nvidia-580xx-utils lib32-nvidia-580xx-utils)
-  fi
-  # Bail if no supported GPU
-  if [ -z "${PACKAGES+x}" ]; then
-    echo "No compatible driver for your NVIDIA GPU. See: https://wiki.archlinux.org/title/NVIDIA"
+if [[ -z "$GPU_ID" ]]; then
+    echo "No NVIDIA GPU found. Skipping."
     exit 0
-  fi
+fi
 
-  omarchy-pkg-add "$KERNEL_HEADERS" "${PACKAGES[@]}"
+echo "[*] Found NVIDIA ID: $GPU_ID"
 
-  # Configure modprobe for early KMS
-  sudo tee /etc/modprobe.d/nvidia.conf <<EOF >/dev/null
-options nvidia_drm modeset=1
-EOF
+# 2. Kill the conflicts
+echo "[*] Removing conflicting open-driver packages..."
+sudo pacman -Rdd --noconfirm libxnvctrl linux-cachyos-nvidia-open linux-cachyos-lts-nvidia-open nvidia-open-dkms 2>/dev/null || true
 
-  # Configure mkinitcpio for early loading
-  sudo tee /etc/mkinitcpio.conf.d/nvidia.conf <<EOF >/dev/null
-MODULES+=(nvidia nvidia_modeset nvidia_uvm nvidia_drm)
-EOF
+# 3. Patch the file
+if ! grep -q "$GPU_ID" /var/lib/chwd/ids/nvidia-580.ids; then
+    echo "[*] Patching chwd ID list..."
+    if [ -n "$(tail -c1 /var/lib/chwd/ids/nvidia-580.ids)" ]; then
+        sudo sh -c "echo >> /var/lib/chwd/ids/nvidia-580.ids"
+    fi
+    sudo sed -i "\$a $GPU_ID" /var/lib/chwd/ids/nvidia-580.ids
+else
+    echo "[*] GPU ID already present in 580 list."
+fi
 
-  # Add NVIDIA environment variables
-  cat >>$HOME/.config/hypr/envs.conf <<'EOF'
+# 4. Remove old profile
+echo "[*] Removing old chwd profile..."
+sudo chwd -r nvidia-open-dkms --noconfirm || true
+
+# 5. Install new profile
+echo "[*] Installing 580xx proprietary profile..."
+sudo chwd -a
+
+# 6. Install VA-API utils
+sudo pacman -S --needed --noconfirm libva-utils
+
+# 7. Add NVIDIA environment variables for UWSM
+cat >>$HOME/.config/uwsm/env <<'EOF'
 
 # NVIDIA
-env = NVD_BACKEND,direct
-env = LIBVA_DRIVER_NAME,nvidia
-env = __GLX_VENDOR_LIBRARY_NAME,nvidia
+export LIBVA_DRIVER_NAME=nvidia
+export GBM_BACKEND=nvidia-drm
+export __GLX_VENDOR_LIBRARY_NAME=nvidia
+export NVD_BACKEND=direct
+export MOZ_DISABLE_RDD_SANDBOX=1
+export CUDA_DISABLE_PERF_BOOST=1
 EOF
-fi
