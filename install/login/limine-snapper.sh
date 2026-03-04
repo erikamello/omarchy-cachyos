@@ -82,17 +82,21 @@ fi
 
 echo "mkinitcpio hooks re-enabled"
 
-sudo limine-update
+if command -v limine-update &>/dev/null && [[ -f /boot/limine.conf ]]; then
+  sudo limine-update
 
-# Verify that limine-update actually added boot entries
-if ! grep -q "^/+" /boot/limine.conf; then
-  echo "Error: limine-update failed to add boot entries to /boot/limine.conf" >&2
-  exit 1
-fi
+  # Verify that limine-update actually added boot entries
+  if ! grep -q "^/+" /boot/limine.conf; then
+    echo "Error: limine-update failed to add boot entries to /boot/limine.conf" >&2
+    exit 1
+  fi
 
-if [[ -n $EFI ]] && efibootmgr &>/dev/null; then
-  # Remove the archinstall-created Limine entry
-  while IFS= read -r bootnum; do
-    sudo efibootmgr -b "$bootnum" -B >/dev/null 2>&1
-  done < <(efibootmgr | grep -E "^Boot[0-9]{4}\*? Arch Linux Limine" | sed 's/^Boot\([0-9]\{4\}\).*/\1/')
+  if [[ -n $EFI ]] && efibootmgr &>/dev/null; then
+    # Remove the archinstall-created Limine entry
+    while IFS= read -r bootnum; do
+      sudo efibootmgr -b "$bootnum" -B >/dev/null 2>&1
+    done < <(efibootmgr | grep -E "^Boot[0-9]{4}\*? Arch Linux Limine" | sed 's/^Boot\([0-9]\{4\}\).*/\1/')
+  fi
+else
+  echo "Skipping limine-update (Limine is not configured on this system)"
 fi
