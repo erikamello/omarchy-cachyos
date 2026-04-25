@@ -2,14 +2,14 @@
 
 # Ensure Omarchy bins are in the path
 export OMARCHY_PATH=$HOME/.local/share/omarchy
-export PATH=$OMARCHY_PATH/bin:$PATH
+export PATH=$OMARCHY_PATH/bin:$PATH:$HOME/.local/bin
 
 # Set default terminal and editor
 source ~/.config/uwsm/default
 
 # Activate mise if present on the system
 if [ "$SHELL" = "/bin/bash" ] && command -v mise &> /dev/null; then
-  eval "$(mise activate bash)"
+  eval "$(mise activate bash --shims)"
 elif [ "$SHELL" = "/bin/fish" ] && command -v mise &> /dev/null; then
-  mise activate fish | source
+  mise activate fish --shims | source
 fi
