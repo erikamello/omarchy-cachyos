@@ -1,6 +1,13 @@
 omarchy-refresh-applications
 update-desktop-database ~/.local/share/applications
 
+# Avoid xdg-mime KDE branch noise when qtpaths is unavailable.
+if omarchy-cmd-missing qtpaths; then
+  unset KDE_SESSION_VERSION
+  unset KDE_FULL_SESSION
+  export XDG_CURRENT_DESKTOP=X-Generic
+fi
+
 # Open directories in file manager
 xdg-mime default org.gnome.Nautilus.desktop inode/directory
 
